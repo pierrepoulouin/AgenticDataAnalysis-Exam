@@ -1,0 +1,12 @@
+*.csv
+.conda/
+__pycache__/
+*.ipynb_checkpoints/
+*.pkl
+*.png
+*.pdf
+*.pickle
+*.pyc
+*.pyo
+*.pyd
+
