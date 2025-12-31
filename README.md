@@ -1,11 +1,8 @@
 # 🎓 Examen Pratique : Modernisation d'une Plateforme d'Agent Analytique
 
-**Cours** : AI-Agents-MLOps-Course  
-**Durée estimée** : 40-50 heures  
-**Points totaux** : 20 points  
-**Prérequis** : Chapitres 4 et 5 du cours
+**Cours** : AI-Agents-MLOps-Course 
+**Points totaux** : 20 points
 
----
 
 ## 🔴 Problématique : Pourquoi Cette Architecture Échoue en Production
 
