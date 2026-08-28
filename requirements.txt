@@ -3,6 +3,11 @@ streamlit
 scikit-learn
 plotly
 
+fastapi
+uvicorn
+structlog
+prometheus-client
+
 langchain==0.1.17
 langchain-core==0.1.52
 langchain-openai==0.1.1
