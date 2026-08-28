@@ -1,86 +1,196 @@
-from langchain_core.tools import tool
-from langchain_experimental.utilities import PythonREPL
-
-from langchain_core.messages import AIMessage
-from typing import Annotated, Tuple
-from langgraph.prebuilt import InjectedState
-import sys
-from io import StringIO
 import os
-import plotly.graph_objects as go
-import plotly.io as pio
-import plotly.express as px
+import pickle
+import sys
+import uuid
+from io import StringIO
+from typing import Tuple
+
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import sklearn
 
+from langchain_core.tools import tool
 
-repl = PythonREPL()
 
+# ATTENTION :
+# Ceci est volontairement conservé comme dans le POC.
+# Cette variable globale est justement un des problèmes
+# d'isolation multi-utilisateurs que l'examen demande d'identifier.
 persistent_vars = {}
-plotly_saving_code = """import pickle
-import uuid
-import plotly
 
-for figure in plotly_figures:
-    pickle_filename = f"images/plotly_figures/pickle/{uuid.uuid4()}.pickle"
-    with open(pickle_filename, 'wb') as f:
-        pickle.dump(figure, f)
-"""
 
-@tool(parse_docstring=True)
+@tool
 def complete_python_task(
-        graph_state: Annotated[dict, InjectedState], thought: str, python_code: str
+    thought: str,
+    python_code: str,
+    graph_state: dict = None,
 ) -> Tuple[str, dict]:
-    """Completes a python task
+    """
+    Completes a python task.
 
     Args:
-        thought: Internal thought about the next action to be taken, and the reasoning behind it. This should be formatted in MARKDOWN and be high quality.
-        python_code: Python code to be executed to perform analyses, create a new dataset or create a visualization.
+        thought:
+            Internal thought about the next action to be taken.
+
+        python_code:
+            Python code to execute for analysis,
+            transformation or visualization.
+
+        graph_state:
+            Current LangGraph state.
+            It is injected manually by call_tools().
     """
-    current_variables = graph_state["current_variables"] if "current_variables" in graph_state else {}
-    for input_dataset in graph_state["input_data"]:
-        if input_dataset.variable_name not in current_variables:
-            current_variables[input_dataset.variable_name] = pd.read_csv(input_dataset.data_path)
-    if not os.path.exists("images/plotly_figures/pickle"):
-        os.makedirs("images/plotly_figures/pickle")
 
-    current_image_pickle_files = os.listdir("images/plotly_figures/pickle")
+    graph_state = graph_state or {}
+
+    current_variables = (
+        graph_state.get("current_variables") or {}
+    )
+
+    input_data = graph_state.get("input_data") or []
+
+    # Charger les datasets CSV dans l'environnement Python.
+    for input_dataset in input_data:
+        if (
+            input_dataset.variable_name
+            not in current_variables
+        ):
+            current_variables[
+                input_dataset.variable_name
+            ] = pd.read_csv(
+                input_dataset.data_path
+            )
+
+    output_directory = "images/plotly_figures/pickle"
+
+    os.makedirs(
+        output_directory,
+        exist_ok=True,
+    )
+
+    existing_image_files = set(
+        os.listdir(output_directory)
+    )
+
+    # Sauvegarde de stdout avant redirection.
+    old_stdout = sys.stdout
+    captured_stdout = StringIO()
+
     try:
-        # Capture stdout
-        old_stdout = sys.stdout
-        sys.stdout = StringIO()
+        sys.stdout = captured_stdout
 
-        # Execute the code and capture the result
+        # Environnement d'exécution Python.
+        #
+        # IMPORTANT :
+        # globals().copy() est précisément une faiblesse
+        # de sécurité du POC à analyser pendant l'examen.
         exec_globals = globals().copy()
+
         exec_globals.update(persistent_vars)
         exec_globals.update(current_variables)
-        exec_globals.update({"plotly_figures": []})
 
+        # Convention utilisée par le prompt :
+        # les graphiques Plotly doivent être ajoutés ici.
+        exec_globals["plotly_figures"] = []
 
-        exec(python_code, exec_globals)
-        persistent_vars.update({k: v for k, v in exec_globals.items() if k not in globals()})
+        # Exécution du code produit par le LLM.
+        exec(
+            python_code,
+            exec_globals,
+        )
 
-        # Get the captured stdout
-        output = sys.stdout.getvalue()
+        output = captured_stdout.getvalue()
 
-        # Restore stdout
-        sys.stdout = old_stdout
-
-        updated_state = {
-            "intermediate_outputs": [{"thought": thought, "code": python_code, "output": output}],
-            "current_variables": persistent_vars
+        # Sauvegarder les nouvelles variables Python.
+        new_variables = {
+            key: value
+            for key, value in exec_globals.items()
+            if key not in globals()
+            and key != "__builtins__"
         }
 
-        if 'plotly_figures' in exec_globals:
-            exec(plotly_saving_code, exec_globals)
-            # Check if any images were created
-            new_image_folder_contents = os.listdir("images/plotly_figures/pickle")
-            new_image_files = [file for file in new_image_folder_contents if file not in current_image_pickle_files]
-            if new_image_files:
-                updated_state["output_image_paths"] = new_image_files
-            
-            persistent_vars["plotly_figures"] = []
+        persistent_vars.update(new_variables)
+
+        updated_state = {
+            "intermediate_outputs": [
+                {
+                    "thought": thought,
+                    "code": python_code,
+                    "output": output,
+                }
+            ],
+            "current_variables": persistent_vars,
+        }
+
+        # Sauvegarde des visualisations Plotly.
+        figures = exec_globals.get(
+            "plotly_figures",
+            [],
+        )
+
+        for figure in figures:
+            pickle_filename = (
+                f"{uuid.uuid4()}.pickle"
+            )
+
+            pickle_path = os.path.join(
+                output_directory,
+                pickle_filename,
+            )
+
+            with open(
+                pickle_path,
+                "wb",
+            ) as file:
+                pickle.dump(
+                    figure,
+                    file,
+                )
+
+        new_image_files = [
+            file
+            for file in os.listdir(output_directory)
+            if file not in existing_image_files
+        ]
+
+        if new_image_files:
+            updated_state[
+                "output_image_paths"
+            ] = new_image_files
+
+        # Éviter que les figures précédentes soient
+        # considérées comme nouvelles au prochain appel.
+        persistent_vars["plotly_figures"] = []
 
         return output, updated_state
-    except Exception as e:
-        return str(e), {"intermediate_outputs": [{"thought": thought, "code": python_code, "output": str(e)}]}
+
+    except Exception as exc:
+        output = captured_stdout.getvalue()
+
+        error_message = str(exc)
+
+        if output:
+            full_output = (
+                f"{output}\nError: {error_message}"
+            )
+        else:
+            full_output = error_message
+
+        return (
+            full_output,
+            {
+                "intermediate_outputs": [
+                    {
+                        "thought": thought,
+                        "code": python_code,
+                        "output": full_output,
+                    }
+                ]
+            },
+        )
+
+    finally:
+        # Très important :
+        # stdout doit être restauré même si exec() plante.
+        sys.stdout = old_stdout
