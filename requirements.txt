@@ -8,6 +8,16 @@ uvicorn
 structlog
 prometheus-client
 
+sqlalchemy
+psycopg2-binary
+alembic
+passlib
+bcrypt==4.0.1
+python-jose
+python-multipart
+
+email-validator
+
 langchain==0.1.17
 langchain-core==0.1.52
 langchain-openai==0.1.1
