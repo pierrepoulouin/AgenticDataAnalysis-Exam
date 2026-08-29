@@ -51,6 +51,11 @@ def agent_manager(
 
     monkeypatch.chdir(tmp_path)
 
+    monkeypatch.setenv(
+        "UPLOAD_ROOT",
+        str((tmp_path / "uploads").resolve()),
+    )
+
     upload_directory = (
         tmp_path
         / "uploads"
