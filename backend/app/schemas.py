@@ -79,3 +79,21 @@ class AgentTaskStatusResponse(BaseModel):
     status: str
     answer: str | None = None
     figures: list[dict] = Field(default_factory=list)
+
+class SessionCreate(BaseModel):
+    title: str = Field(
+        min_length=1,
+        max_length=200,
+    )
+
+
+class SessionResponse(BaseModel):
+    id: int
+    user_id: int
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )

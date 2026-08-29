@@ -4,8 +4,14 @@ from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
 from backend.app.models import ChatSession, Message, User
+from backend.app.schemas import (
+    MessageCreate,
+    MessageResponse,
+    SessionCreate,
+    SessionResponse,
+)
 from backend.app.security import get_current_user
-from backend.app.schemas import MessageCreate, MessageResponse
+
 
 router = APIRouter(
     prefix="/sessions",
@@ -13,52 +19,53 @@ router = APIRouter(
 )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=SessionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_session(
+    payload: SessionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     session = ChatSession(
         user_id=current_user.id,
-        title="New analysis",
+        title=payload.title.strip(),
     )
 
     db.add(session)
     db.commit()
     db.refresh(session)
 
-    return {
-        "id": session.id,
-        "user_id": session.user_id,
-        "title": session.title,
-        "created_at": session.created_at,
-        "updated_at": session.updated_at,
-    }
+    return session
 
 
-@router.get("")
+@router.get(
+    "",
+    response_model=list[SessionResponse],
+)
 def list_sessions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     sessions = db.scalars(
         select(ChatSession)
-        .where(ChatSession.user_id == current_user.id)
-        .order_by(ChatSession.created_at.desc())
+        .where(
+            ChatSession.user_id == current_user.id
+        )
+        .order_by(
+            ChatSession.created_at.desc()
+        )
     ).all()
 
-    return [
-        {
-            "id": session.id,
-            "title": session.title,
-            "created_at": session.created_at,
-            "updated_at": session.updated_at,
-        }
-        for session in sessions
-    ]
+    return sessions
 
 
-@router.get("/{session_id}")
+@router.get(
+    "/{session_id}",
+    response_model=SessionResponse,
+)
 def get_session(
     session_id: int,
     db: Session = Depends(get_db),
@@ -77,12 +84,8 @@ def get_session(
             detail="Session not found",
         )
 
-    return {
-        "id": session.id,
-        "title": session.title,
-        "created_at": session.created_at,
-        "updated_at": session.updated_at,
-    }
+    return session
+
 
 @router.post(
     "/{session_id}/messages",
@@ -143,8 +146,14 @@ def list_messages(
             detail="Session not found",
         )
 
-    return db.scalars(
+    messages = db.scalars(
         select(Message)
-        .where(Message.session_id == session.id)
-        .order_by(Message.created_at.asc())
+        .where(
+            Message.session_id == session.id
+        )
+        .order_by(
+            Message.created_at.asc()
+        )
     ).all()
+
+    return messages
