@@ -1,3 +1,6 @@
+numpy
+scipy
+httpx
 pandas
 streamlit
 scikit-learn
