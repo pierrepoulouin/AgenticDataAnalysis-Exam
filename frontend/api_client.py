@@ -13,6 +13,14 @@ API_BASE_URL = os.getenv(
 class APIError(Exception):
     """Erreur retournée par le backend FastAPI."""
 
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+    ):
+        super().__init__(message)
+        self.status_code = status_code
+
 
 def _handle_response(response: requests.Response) -> Any:
     try:
@@ -26,10 +34,14 @@ def _handle_response(response: requests.Response) -> Any:
     if isinstance(payload, dict):
         detail = payload.get("detail")
         if detail:
-            raise APIError(str(detail))
+            raise APIError(
+                str(detail),
+                status_code=response.status_code,
+            )
 
     raise APIError(
-        f"API error {response.status_code}"
+        f"API error {response.status_code}",
+        status_code=response.status_code,
     )
 
 
@@ -150,6 +162,21 @@ def get_messages(
 ) -> list[dict]:
     response = requests.get(
         f"{API_BASE_URL}/sessions/{session_id}/messages",
+        headers=_auth_headers(token),
+        timeout=10,
+    )
+
+    return _handle_response(response)
+
+def list_message_visualizations(
+    token: str,
+    message_id: int,
+) -> list[dict]:
+    response = requests.get(
+        (
+            f"{API_BASE_URL}/messages/"
+            f"{message_id}/visualizations"
+        ),
         headers=_auth_headers(token),
         timeout=10,
     )
