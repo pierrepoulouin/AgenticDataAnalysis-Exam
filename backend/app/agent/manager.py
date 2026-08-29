@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -65,7 +66,9 @@ class AgentManager:
 
         loaded = {}
 
-        allowed_root = Path("uploads").resolve()
+        allowed_root = Path(
+            os.getenv("UPLOAD_ROOT", "uploads")
+        ).resolve()
 
         for dataset in datasets:
             path = Path(dataset.storage_path).resolve()
