@@ -8,6 +8,8 @@ class AgentState(TypedDict, total=False):
 
     session_id: int
     user_id: int
+    user_query: str
+
 
     data_context: dict[str, Any]
     current_variables: dict[str, Any]

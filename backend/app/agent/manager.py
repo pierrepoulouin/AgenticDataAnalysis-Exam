@@ -18,6 +18,7 @@ from backend.app.models import (
     Message,
     Visualization,
 )
+from backend.app.agent.planner import Planner
 
 
 class AgentManager:
@@ -187,3 +188,59 @@ class AgentManager:
         self.variables = result["variables"]
 
         return result
+
+    def run_agent_turn(
+        self,
+        user_query: str,
+        planner: Planner,
+    ) -> dict[str, Any]:
+        from backend.app.agent.graph import create_agent_graph
+
+        self.get_session()
+
+        user_message = self.save_message(
+            role="user",
+            content=user_query,
+        )
+
+        history = self.load_history()
+        data_context = self.load_dataframe_context()
+
+        graph = create_agent_graph(
+            manager=self,
+            planner=planner,
+        )
+
+        result = graph.invoke({
+            "session_id": self.session_id,
+            "user_id": self.user_id,
+            "user_query": user_query,
+            "data_context": data_context,
+            "current_variables": self.variables,
+            "figures": [],
+            "final_answer": None,
+        })
+
+        final_answer = result.get("final_answer")
+
+        if not final_answer:
+            raise ValueError(
+                "Agent did not produce a final answer"
+            )
+
+        figures = result.get("figures", [])
+
+        assistant_message = self.save_message(
+            role="assistant",
+            content=final_answer,
+            figures=figures,
+        )
+
+        return {
+            "user_message_id": user_message.id,
+            "assistant_message_id": assistant_message.id,
+            "answer": final_answer,
+            "figures": figures,
+            "thought": result.get("thought"),
+            "tool_result": result.get("tool_result"),
+        }

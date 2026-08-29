@@ -5,6 +5,27 @@ from backend.app.agent.manager import AgentManager
 from backend.app.agent.state import AgentState
 
 
+Planner = Callable[[AgentState], dict[str, Any]]
+
+
+def make_reason_node(
+    planner: Planner,
+) -> Callable[[AgentState], dict[str, Any]]:
+    def reason_node(
+        state: AgentState,
+    ) -> dict[str, Any]:
+        decision = planner(state)
+
+        return {
+            "thought": decision.get("thought", ""),
+            "tool_name": decision.get("tool_name"),
+            "python_code": decision.get("python_code"),
+            "final_answer": decision.get("final_answer"),
+        }
+
+    return reason_node
+
+
 def make_tool_execution_node(
     manager: AgentManager,
 ) -> Callable[[AgentState], dict[str, Any]]:
@@ -35,6 +56,10 @@ def make_tool_execution_node(
             "tool_result": result,
             "current_variables": manager.variables,
             "figures": result.get("figures", []),
+
+            # On remet la décision à zéro.
+            "tool_name": None,
+            "python_code": None,
         }
 
     return execute_tool_node
