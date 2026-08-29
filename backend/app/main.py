@@ -9,6 +9,7 @@ from prometheus_client import Counter, Histogram, generate_latest
 
 from backend.app.routers.auth import router as auth_router
 from backend.app.routers.sessions import router as sessions_router
+from backend.app.routers.datasets import router as datasets_router
 
 
 logger = structlog.get_logger()
@@ -47,6 +48,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(sessions_router)
+app.include_router(datasets_router)
 
 
 @app.middleware("http")
