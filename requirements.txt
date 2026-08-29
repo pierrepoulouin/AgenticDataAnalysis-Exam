@@ -8,6 +8,7 @@ fastapi
 uvicorn
 structlog
 prometheus-client
+requests
 
 sqlalchemy
 psycopg2-binary
