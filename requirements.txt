@@ -9,6 +9,7 @@ uvicorn
 structlog
 prometheus-client
 requests
+streamlit-cookies-manager
 
 sqlalchemy
 psycopg2-binary

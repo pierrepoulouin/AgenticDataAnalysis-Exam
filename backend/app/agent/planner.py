@@ -2,9 +2,14 @@ import json
 import os
 from typing import Any, Protocol
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import (
+    HumanMessage,
+    SystemMessage,
+)
 
-from backend.app.agent.state import AgentState
+from backend.app.agent.state import (
+    AgentState,
+)
 
 
 ALLOWED_TOOLS = {
@@ -24,21 +29,74 @@ class Planner(Protocol):
 
 class MockPlanner:
     """
-    Planner déterministe utilisé pour les tests locaux.
+    Planner déterministe pour les tests locaux.
 
-    Aucun appel à une API LLM externe n'est effectué.
+    Il permet de tester toute l'architecture
+    sans consommer d'API LLM.
     """
+
+    def _get_dataset(
+        self,
+        state: AgentState,
+    ):
+        variables = state.get(
+            "current_variables",
+            {},
+        )
+
+        dataset_names = sorted(
+            name
+            for name in variables
+            if name.startswith(
+                "dataset_"
+            )
+        )
+
+        if not dataset_names:
+            return None, None
+
+        dataset_name = (
+            dataset_names[0]
+        )
+
+        return (
+            dataset_name,
+            variables[dataset_name],
+        )
 
     def __call__(
         self,
         state: AgentState,
     ) -> dict[str, Any]:
-        tool_result = state.get("tool_result")
+        tool_result = state.get(
+            "tool_result"
+        )
 
         user_query = state.get(
             "user_query",
             "",
         ).lower()
+
+        (
+            dataset_name,
+            dataframe,
+        ) = self._get_dataset(
+            state
+        )
+
+        if dataset_name is None:
+            return {
+                "thought": (
+                    "Aucun dataset n'est "
+                    "disponible."
+                ),
+                "tool_name": None,
+                "python_code": None,
+                "final_answer": (
+                    "Aucun dataset n'est "
+                    "associé à cette session."
+                ),
+            }
 
         wants_visualization = any(
             keyword in user_query
@@ -51,45 +109,129 @@ class MockPlanner:
             )
         )
 
-        # ---------------------------------------------------------------
-        # Premier passage : Reason -> choix d'un outil
-        # ---------------------------------------------------------------
-
         if tool_result is None:
+            columns = list(
+                dataframe.columns
+            )
+
+            numeric_columns = list(
+                dataframe.select_dtypes(
+                    include="number"
+                ).columns
+            )
+
             if wants_visualization:
+                if (
+                    "mois" in columns
+                    and "ventes" in columns
+                ):
+                    x_column = "mois"
+                    y_column = "ventes"
+
+                    python_code = f"""
+fig = px.bar(
+    {dataset_name},
+    x={x_column!r},
+    y={y_column!r},
+    title="Ventes par mois",
+)
+"""
+
+                elif (
+                    columns
+                    and numeric_columns
+                ):
+                    x_column = columns[0]
+                    y_column = (
+                        numeric_columns[0]
+                    )
+
+                    python_code = f"""
+fig = px.bar(
+    {dataset_name},
+    x={x_column!r},
+    y={y_column!r},
+    title="Visualisation des données",
+)
+"""
+
+                elif columns:
+                    x_column = columns[0]
+
+                    python_code = f"""
+fig = px.histogram(
+    {dataset_name},
+    x={x_column!r},
+    title="Distribution des données",
+)
+"""
+
+                else:
+                    return {
+                        "thought": (
+                            "Le dataset ne contient "
+                            "aucune colonne."
+                        ),
+                        "tool_name": None,
+                        "python_code": None,
+                        "final_answer": (
+                            "Le dataset est vide."
+                        ),
+                    }
+
                 return {
                     "thought": (
-                        "Créer un graphique des ventes "
-                        "par mois."
+                        "Créer une visualisation "
+                        "du dataset."
                     ),
-                    "tool_name": "execute_visualization",
-                    "python_code": """
-fig = px.bar(
-    dataset_1,
-    x="mois",
-    y="ventes",
-    title="Ventes 2026",
-)
-""",
+                    "tool_name": (
+                        "execute_visualization"
+                    ),
+                    "python_code": python_code,
                     "final_answer": None,
+                }
+
+            if (
+                "ventes"
+                in numeric_columns
+            ):
+                target_column = (
+                    "ventes"
+                )
+
+            elif numeric_columns:
+                target_column = (
+                    numeric_columns[0]
+                )
+
+            else:
+                return {
+                    "thought": (
+                        "Aucune colonne numérique "
+                        "n'est disponible."
+                    ),
+                    "tool_name": None,
+                    "python_code": None,
+                    "final_answer": (
+                        "Je ne trouve aucune "
+                        "colonne numérique à analyser."
+                    ),
                 }
 
             return {
                 "thought": (
-                    "Calculer le total des ventes "
-                    "avec l'outil statistique."
+                    "Calculer la somme d'une "
+                    "colonne numérique."
                 ),
-                "tool_name": "execute_statistical_analysis",
-                "python_code": """
-total_sales = dataset_1["ventes"].sum()
-print("Total :", total_sales)
+                "tool_name": (
+                    "execute_statistical_analysis"
+                ),
+                "python_code": f"""
+analysis_value = {dataset_name}[{target_column!r}].sum()
+print("Total :", analysis_value)
 """,
                 "final_answer": None,
             }
-
-        # ---------------------------------------------------------------
-        # Deuxième passage : Observation -> réponse finale
-        # ---------------------------------------------------------------
 
         if (
             tool_result.get("tool")
@@ -97,52 +239,57 @@ print("Total :", total_sales)
         ):
             return {
                 "thought": (
-                    "La visualisation a été créée."
+                    "La visualisation "
+                    "a été créée."
                 ),
                 "tool_name": None,
                 "python_code": None,
                 "final_answer": (
                     "Voici la visualisation "
-                    "des ventes par mois."
+                    "des données."
                 ),
             }
 
-        total_sales = state.get(
+        analysis_value = state.get(
             "current_variables",
             {},
-        ).get("total_sales")
+        ).get(
+            "analysis_value"
+        )
 
         return {
             "thought": (
-                "Le résultat nécessaire "
-                "est disponible."
+                "Le calcul est terminé."
             ),
             "tool_name": None,
             "python_code": None,
             "final_answer": (
-                f"Le total des ventes est "
-                f"de {total_sales}."
+                f"Le résultat du calcul "
+                f"est de {analysis_value}."
             ),
         }
 
 
 class LLMPlanner:
     """
-    Planner utilisant un LLM externe.
-
-    Le provider n'est utilisé que lorsque
+    Planner utilisant un vrai LLM lorsque
     AGENT_PLANNER=llm.
     """
 
     def __init__(self) -> None:
-        from langchain_openai import ChatOpenAI
+        from langchain_openai import (
+            ChatOpenAI,
+        )
 
-        model_name = os.getenv("OPENAI_MODEL")
+        model_name = os.getenv(
+            "OPENAI_MODEL"
+        )
 
         if not model_name:
             raise RuntimeError(
-                "OPENAI_MODEL must be configured "
-                "when AGENT_PLANNER=llm"
+                "OPENAI_MODEL must be "
+                "configured when "
+                "AGENT_PLANNER=llm"
             )
 
         self.llm = ChatOpenAI(
@@ -172,8 +319,12 @@ class LLMPlanner:
 
         if tool_result:
             observation = {
-                "tool": tool_result.get("tool"),
-                "stdout": tool_result.get("stdout"),
+                "tool": tool_result.get(
+                    "tool"
+                ),
+                "stdout": tool_result.get(
+                    "stdout"
+                ),
             }
 
         system_prompt = """
@@ -184,38 +335,43 @@ You may use only these tools:
 - execute_statistical_analysis
 - execute_visualization
 
-Available Python libraries are already exposed:
+Available Python libraries:
 pd, np, px, go, stats, sklearn.
 
 Do not write import statements.
 
 Return ONLY valid JSON.
 
-If an action is required, return:
+For a tool action:
 {
-  "thought": "short action rationale",
-  "tool_name": "one allowed tool",
+  "thought": "short rationale",
+  "tool_name": "allowed tool",
   "python_code": "python code",
   "final_answer": null
 }
 
-If the task is complete, return:
+For a final response:
 {
-  "thought": "short completion rationale",
+  "thought": "short rationale",
   "tool_name": null,
   "python_code": null,
-  "final_answer": "answer for the user"
+  "final_answer": "answer"
 }
 
-Do not invent dataset columns or results.
-Use observations from executed tools.
+Do not invent columns or results.
 """
 
         human_prompt = json.dumps(
             {
-                "user_query": user_query,
-                "data_context": data_context,
-                "observation": observation,
+                "user_query": (
+                    user_query
+                ),
+                "data_context": (
+                    data_context
+                ),
+                "observation": (
+                    observation
+                ),
             },
             default=str,
             ensure_ascii=False,
@@ -239,7 +395,8 @@ Use observations from executed tools.
 
         except json.JSONDecodeError as exc:
             raise ValueError(
-                "Planner returned invalid JSON"
+                "Planner returned "
+                "invalid JSON"
             ) from exc
 
         tool_name = decision.get(
@@ -251,24 +408,28 @@ Use observations from executed tools.
         )
 
         if tool_name is not None:
-            if tool_name not in ALLOWED_TOOLS:
+            if (
+                tool_name
+                not in ALLOWED_TOOLS
+            ):
                 raise ValueError(
-                    "Planner selected forbidden "
-                    f"tool: {tool_name}"
+                    "Planner selected "
+                    "forbidden tool: "
+                    f"{tool_name}"
                 )
 
             if not decision.get(
                 "python_code"
             ):
                 raise ValueError(
-                    "Planner selected a tool "
-                    "without Python code"
+                    "Planner selected a "
+                    "tool without Python code"
                 )
 
         elif not final_answer:
             raise ValueError(
                 "Planner returned neither "
-                "a tool nor a final answer"
+                "tool nor final answer"
             )
 
         return {
@@ -285,11 +446,6 @@ Use observations from executed tools.
 
 
 def get_planner() -> Planner:
-    """
-    Sélectionne le planner à partir
-    de la configuration d'environnement.
-    """
-
     planner_type = os.getenv(
         "AGENT_PLANNER",
         "mock",
@@ -302,6 +458,6 @@ def get_planner() -> Planner:
         return LLMPlanner()
 
     raise ValueError(
-        f"Unsupported AGENT_PLANNER: "
+        "Unsupported AGENT_PLANNER: "
         f"{planner_type}"
     )

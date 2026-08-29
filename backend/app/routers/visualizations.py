@@ -17,9 +17,23 @@ from backend.app.schemas import (
 )
 from backend.app.security import get_current_user
 
+
 router = APIRouter(
     tags=["visualizations"],
 )
+
+
+def visualization_to_response(
+    visualization: Visualization,
+) -> VisualizationResponse:
+    return VisualizationResponse(
+        id=visualization.id,
+        message_id=visualization.message_id,
+        figure_json=json.loads(
+            visualization.figure_json
+        ),
+        created_at=visualization.created_at,
+    )
 
 
 @router.post(
@@ -35,7 +49,10 @@ def create_visualization(
 ):
     message = db.scalar(
         select(Message)
-        .join(ChatSession)
+        .join(
+            ChatSession,
+            Message.session_id == ChatSession.id,
+        )
         .where(
             Message.id == message_id,
             ChatSession.user_id == current_user.id,
@@ -49,20 +66,19 @@ def create_visualization(
         )
 
     visualization = Visualization(
-        message_id=message.id,
-        figure_json=json.dumps(payload.figure_json),
+        message_id=message_id,
+        figure_json=json.dumps(
+            payload.figure_json
+        ),
     )
 
     db.add(visualization)
     db.commit()
     db.refresh(visualization)
 
-    return {
-        "id": visualization.id,
-        "message_id": visualization.message_id,
-        "figure_json": json.loads(visualization.figure_json),
-        "created_at": visualization.created_at,
-    }
+    return visualization_to_response(
+        visualization
+    )
 
 
 @router.get(
@@ -76,8 +92,14 @@ def get_visualization(
 ):
     visualization = db.scalar(
         select(Visualization)
-        .join(Message)
-        .join(ChatSession)
+        .join(
+            Message,
+            Visualization.message_id == Message.id,
+        )
+        .join(
+            ChatSession,
+            Message.session_id == ChatSession.id,
+        )
         .where(
             Visualization.id == visualization_id,
             ChatSession.user_id == current_user.id,
@@ -90,12 +112,10 @@ def get_visualization(
             detail="Visualization not found",
         )
 
-    return {
-        "id": visualization.id,
-        "message_id": visualization.message_id,
-        "figure_json": json.loads(visualization.figure_json),
-        "created_at": visualization.created_at,
-    }
+    return visualization_to_response(
+        visualization
+    )
+
 
 @router.get(
     "/messages/{message_id}/visualizations",
@@ -108,7 +128,10 @@ def list_message_visualizations(
 ):
     message = db.scalar(
         select(Message)
-        .join(ChatSession)
+        .join(
+            ChatSession,
+            Message.session_id == ChatSession.id,
+        )
         .where(
             Message.id == message_id,
             ChatSession.user_id == current_user.id,
@@ -130,13 +153,8 @@ def list_message_visualizations(
     ).all()
 
     return [
-        VisualizationResponse(
-            id=visualization.id,
-            message_id=visualization.message_id,
-            figure_json=json.loads(
-                visualization.figure_json
-            ),
-            created_at=visualization.created_at,
+        visualization_to_response(
+            visualization
         )
         for visualization in visualizations
     ]

@@ -5,119 +5,184 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
 from backend.app.models import User
 
 
-password_context = CryptContext(
+pwd_context = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto",
 )
 
 oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="/auth/login",
+    tokenUrl="/auth/login"
+)
+
+SECRET_KEY = os.getenv(
+    "JWT_SECRET_KEY",
+    "change-me",
 )
 
 ALGORITHM = "HS256"
 
 ACCESS_TOKEN_EXPIRE_MINUTES = int(
-    os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
+    os.getenv(
+        "ACCESS_TOKEN_EXPIRE_MINUTES",
+        "30",
+    )
+)
+
+REFRESH_TOKEN_EXPIRE_DAYS = int(
+    os.getenv(
+        "REFRESH_TOKEN_EXPIRE_DAYS",
+        "7",
+    )
 )
 
 
-def hash_password(password: str) -> str:
-    return password_context.hash(password)
+def hash_password(
+    password: str,
+) -> str:
+    return pwd_context.hash(password)
 
 
 def verify_password(
     plain_password: str,
     hashed_password: str,
 ) -> bool:
-    return password_context.verify(
+    return pwd_context.verify(
         plain_password,
         hashed_password,
     )
 
 
-def create_access_token(subject: str) -> str:
-    secret_key = os.getenv("JWT_SECRET_KEY")
-
-    if not secret_key:
-        raise RuntimeError(
-            "JWT_SECRET_KEY is not configured"
-        )
-
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+def _create_token(
+    subject: str,
+    token_type: str,
+    expires_delta: timedelta,
+) -> str:
+    expire = (
+        datetime.now(timezone.utc)
+        + expires_delta
     )
 
     payload = {
         "sub": subject,
-        "exp": expires_at,
+        "type": token_type,
+        "exp": expire,
     }
 
     return jwt.encode(
         payload,
-        secret_key,
+        SECRET_KEY,
         algorithm=ALGORITHM,
     )
 
 
-def decode_access_token(token: str) -> str | None:
-    secret_key = os.getenv("JWT_SECRET_KEY")
+def create_access_token(
+    subject: str,
+) -> str:
+    return _create_token(
+        subject=subject,
+        token_type="access",
+        expires_delta=timedelta(
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+        ),
+    )
 
-    if not secret_key:
-        raise RuntimeError(
-            "JWT_SECRET_KEY is not configured"
-        )
 
+def create_refresh_token(
+    subject: str,
+) -> str:
+    return _create_token(
+        subject=subject,
+        token_type="refresh",
+        expires_delta=timedelta(
+            days=REFRESH_TOKEN_EXPIRE_DAYS
+        ),
+    )
+
+
+def _decode_token(
+    token: str,
+    expected_type: str,
+) -> str | None:
     try:
         payload = jwt.decode(
             token,
-            secret_key,
+            SECRET_KEY,
             algorithms=[ALGORITHM],
         )
 
-        return payload.get("sub")
+        if payload.get("type") != expected_type:
+            return None
+
+        subject = payload.get("sub")
+
+        if not subject:
+            return None
+
+        return subject
 
     except JWTError:
         return None
+
+
+def decode_access_token(
+    token: str,
+) -> str | None:
+    return _decode_token(
+        token,
+        expected_type="access",
+    )
+
+
+def decode_refresh_token(
+    token: str,
+) -> str | None:
+    return _decode_token(
+        token,
+        expected_type="refresh",
+    )
 
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    user_id = decode_access_token(token)
+    subject = decode_access_token(token)
 
-    if user_id is None:
+    if subject is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers={
+                "WWW-Authenticate": "Bearer"
+            },
         )
 
     try:
-        user_id_int = int(user_id)
+        user_id = int(subject)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token subject",
-            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = db.scalar(
-        select(User).where(User.id == user_id_int)
+    user = db.get(
+        User,
+        user_id,
     )
 
-    if user is None or not user.is_active:
+    if (
+        user is None
+        or not user.is_active
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
-            headers={"WWW-Authenticate": "Bearer"},
         )
 
     return user

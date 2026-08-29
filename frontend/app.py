@@ -1,15 +1,19 @@
 import os
 import time
-import plotly.graph_objects as go
 
+import plotly.graph_objects as go
 import streamlit as st
 
-# Compatibilité avec streamlit-cookies-manager,
-# qui utilise encore l'ancien décorateur @st.cache.
+
+# Compatibilité temporaire avec
+# streamlit-cookies-manager.
 if not hasattr(st, "cache"):
     st.cache = st.cache_data
 
-from streamlit_cookies_manager import EncryptedCookieManager
+
+from streamlit_cookies_manager import (
+    EncryptedCookieManager,
+)
 
 from frontend.api_client import (
     APIError,
@@ -17,11 +21,13 @@ from frontend.api_client import (
     get_agent_task_status,
     get_current_user,
     get_messages,
+    list_datasets,
     list_message_visualizations,
     list_sessions,
     login,
     register,
     send_agent_message,
+    upload_dataset,
 )
 
 
@@ -32,16 +38,14 @@ st.set_page_config(
 )
 
 
-# ---------------------------------------------------------------------------
-# Cookies
-# ---------------------------------------------------------------------------
-
-cookie_password = os.getenv("COOKIE_PASSWORD")
+cookie_password = os.getenv(
+    "COOKIE_PASSWORD"
+)
 
 if not cookie_password:
     st.error(
-        "COOKIE_PASSWORD n'est pas configuré "
-        "dans l'environnement."
+        "COOKIE_PASSWORD n'est pas "
+        "configuré."
     )
     st.stop()
 
@@ -56,19 +60,10 @@ if not cookies.ready():
     st.stop()
 
 
-# ---------------------------------------------------------------------------
-# Session state
-# ---------------------------------------------------------------------------
-
 def initialize_state() -> None:
-    """
-    Initialise l'état local Streamlit.
-
-    Si un JWT existe déjà dans le cookie chiffré,
-    il est restauré après un refresh navigateur.
-    """
-
-    saved_token = cookies.get("access_token")
+    saved_token = cookies.get(
+        "access_token"
+    )
 
     defaults = {
         "access_token": saved_token,
@@ -80,38 +75,62 @@ def initialize_state() -> None:
 
     for key, value in defaults.items():
         if key not in st.session_state:
-            st.session_state[key] = value
+            st.session_state[
+                key
+            ] = value
 
 
 def logout() -> None:
-    """
-    Supprime l'état Streamlit et le JWT
-    enregistré dans le cookie navigateur.
-    """
+    st.session_state[
+        "access_token"
+    ] = None
 
-    st.session_state["access_token"] = None
-    st.session_state["current_user"] = None
-    st.session_state["selected_session_id"] = None
-    st.session_state["pending_task_id"] = None
-    st.session_state["pending_task_session_id"] = None
+    st.session_state[
+        "current_user"
+    ] = None
+
+    st.session_state[
+        "selected_session_id"
+    ] = None
+
+    st.session_state[
+        "pending_task_id"
+    ] = None
+
+    st.session_state[
+        "pending_task_session_id"
+    ] = None
 
     if "access_token" in cookies:
-        del cookies["access_token"]
+        del cookies[
+            "access_token"
+        ]
+
         cookies.save()
 
 
-# ---------------------------------------------------------------------------
-# Authentication
-# ---------------------------------------------------------------------------
+def handle_auth_error(
+    exc: APIError,
+) -> None:
+    if exc.status_code == 401:
+        logout()
+
+        st.warning(
+            "Votre session a expiré. "
+            "Veuillez vous reconnecter."
+        )
+
+        st.rerun()
+
 
 def render_authentication() -> None:
-    """Affiche les formulaires de connexion et d'inscription."""
-
-    st.title("📊 Agentic Data Analysis")
+    st.title(
+        "📊 Agentic Data Analysis"
+    )
 
     st.write(
-        "Connectez-vous pour accéder à vos sessions "
-        "d'analyse de données."
+        "Connectez-vous pour accéder "
+        "à vos analyses."
     )
 
     login_tab, register_tab = st.tabs(
@@ -121,46 +140,52 @@ def render_authentication() -> None:
         ]
     )
 
-    # ------------------------------------------------------------------
-    # Login
-    # ------------------------------------------------------------------
-
     with login_tab:
-        with st.form("login_form"):
+        with st.form(
+            "login_form"
+        ):
             email = st.text_input(
-                "Email",
-                key="login_email",
+                "Email"
             )
 
             password = st.text_input(
                 "Mot de passe",
                 type="password",
-                key="login_password",
             )
 
-            submitted = st.form_submit_button(
-                "Se connecter"
+            submitted = (
+                st.form_submit_button(
+                    "Se connecter"
+                )
             )
 
         if submitted:
-            if not email.strip() or not password:
+            if (
+                not email.strip()
+                or not password
+            ):
                 st.warning(
-                    "Veuillez renseigner votre email "
-                    "et votre mot de passe."
+                    "Veuillez renseigner "
+                    "votre email et votre "
+                    "mot de passe."
                 )
 
             else:
                 try:
                     auth = login(
-                        email=email.strip(),
-                        password=password,
+                        email.strip(),
+                        password,
                     )
 
-                    token = auth["access_token"]
+                    token = auth[
+                        "access_token"
+                    ]
 
-                    # FastAPI vérifie immédiatement
-                    # que le JWT reçu est valide.
-                    user = get_current_user(token)
+                    user = (
+                        get_current_user(
+                            token
+                        )
+                    )
 
                     st.session_state[
                         "access_token"
@@ -170,90 +195,103 @@ def render_authentication() -> None:
                         "current_user"
                     ] = user
 
-                    # Persistance navigateur.
-                    cookies["access_token"] = token
+                    cookies[
+                        "access_token"
+                    ] = token
+
                     cookies.save()
 
                     st.rerun()
 
                 except APIError as exc:
-                    if exc.status_code == 401:
+                    if (
+                        exc.status_code
+                        == 401
+                    ):
                         st.error(
-                            "Email ou mot de passe incorrect."
+                            "Email ou mot "
+                            "de passe incorrect."
                         )
 
                     else:
                         st.error(
-                            f"Connexion impossible : {exc}"
+                            "Connexion "
+                            f"impossible : {exc}"
                         )
 
-    # ------------------------------------------------------------------
-    # Register
-    # ------------------------------------------------------------------
-
     with register_tab:
-        with st.form("register_form"):
-            new_email = st.text_input(
-                "Email",
-                key="register_email",
+        with st.form(
+            "register_form"
+        ):
+            new_email = (
+                st.text_input(
+                    "Email",
+                    key="register_email",
+                )
             )
 
-            new_password = st.text_input(
-                "Mot de passe",
-                type="password",
-                key="register_password",
+            new_password = (
+                st.text_input(
+                    "Mot de passe",
+                    type="password",
+                    key="register_password",
+                )
             )
 
-            register_submitted = st.form_submit_button(
-                "Créer le compte"
+            submitted = (
+                st.form_submit_button(
+                    "Créer le compte"
+                )
             )
 
-        if register_submitted:
+        if submitted:
             if (
                 not new_email.strip()
                 or not new_password
             ):
                 st.warning(
-                    "Veuillez renseigner un email "
-                    "et un mot de passe."
+                    "Veuillez renseigner "
+                    "un email et un mot "
+                    "de passe."
                 )
 
             else:
                 try:
                     register(
-                        email=new_email.strip(),
-                        password=new_password,
+                        new_email.strip(),
+                        new_password,
                     )
 
                     st.success(
-                        "Compte créé avec succès. "
-                        "Vous pouvez maintenant "
-                        "vous connecter."
+                        "Compte créé. "
+                        "Vous pouvez vous "
+                        "connecter."
                     )
 
                 except APIError as exc:
-                    if exc.status_code == 409:
+                    if (
+                        exc.status_code
+                        == 409
+                    ):
                         st.error(
-                            "Un compte existe déjà "
-                            "avec cet email."
+                            "Ce compte "
+                            "existe déjà."
                         )
 
                     else:
                         st.error(
-                            f"Création impossible : {exc}"
+                            "Création "
+                            f"impossible : {exc}"
                         )
 
 
 def load_authenticated_user(
     token: str,
 ) -> dict:
-    """
-    Vérifie le JWT auprès de FastAPI
-    et récupère l'utilisateur courant.
-    """
-
     try:
-        user = get_current_user(token)
+        user = get_current_user(
+            token
+        )
 
         st.session_state[
             "current_user"
@@ -262,72 +300,62 @@ def load_authenticated_user(
         return user
 
     except APIError as exc:
-        if exc.status_code == 401:
-            # JWT expiré ou invalide :
-            # on nettoie aussi le cookie.
-            logout()
-
-            st.warning(
-                "Votre session a expiré. "
-                "Veuillez vous reconnecter."
-            )
-
-            st.rerun()
+        handle_auth_error(
+            exc
+        )
 
         st.error(
-            f"Impossible de contacter "
-            f"le backend : {exc}"
+            "Backend indisponible : "
+            f"{exc}"
         )
 
         st.stop()
 
 
-# ---------------------------------------------------------------------------
-# Sessions
-# ---------------------------------------------------------------------------
-
 def render_session_manager(
     token: str,
 ) -> None:
-    """Affiche et crée les sessions d'analyse."""
-
-    st.subheader("Sessions d'analyse")
+    st.subheader(
+        "Sessions d'analyse"
+    )
 
     try:
-        sessions = list_sessions(token)
+        sessions = list_sessions(
+            token
+        )
 
     except APIError as exc:
-        if exc.status_code == 401:
-            logout()
-            st.rerun()
+        handle_auth_error(
+            exc
+        )
 
         st.error(
-            f"Impossible de charger "
+            "Impossible de charger "
             f"les sessions : {exc}"
         )
 
         st.stop()
 
-    # ------------------------------------------------------------------
-    # Create session
-    # ------------------------------------------------------------------
-
-    with st.form("create_session_form"):
-        session_title = st.text_input(
+    with st.form(
+        "create_session_form"
+    ):
+        title = st.text_input(
             "Nom de la nouvelle session",
-            placeholder="Analyse des ventes 2026",
+            placeholder=(
+                "Analyse des ventes 2026"
+            ),
         )
 
-        create_submitted = (
+        submitted = (
             st.form_submit_button(
                 "Créer une session"
             )
         )
 
-    if create_submitted:
-        clean_title = session_title.strip()
+    if submitted:
+        title = title.strip()
 
-        if not clean_title:
+        if not title:
             st.warning(
                 "Veuillez donner un nom "
                 "à la session."
@@ -335,39 +363,30 @@ def render_session_manager(
 
         else:
             try:
-                new_session = create_session(
-                    token=token,
-                    title=clean_title,
+                session = create_session(
+                    token,
+                    title,
                 )
 
                 st.session_state[
                     "selected_session_id"
-                ] = new_session["id"]
-
-                st.success(
-                    "Session créée avec succès."
-                )
+                ] = session["id"]
 
                 st.rerun()
 
             except APIError as exc:
-                if exc.status_code == 401:
-                    logout()
-                    st.rerun()
-
-                st.error(
-                    f"Création impossible : {exc}"
+                handle_auth_error(
+                    exc
                 )
 
-    # ------------------------------------------------------------------
-    # Session selector
-    # ------------------------------------------------------------------
+                st.error(
+                    "Création impossible : "
+                    f"{exc}"
+                )
 
     if not sessions:
         st.info(
-            "Aucune session d'analyse "
-            "pour le moment. "
-            "Créez votre première session."
+            "Aucune session."
         )
 
         st.session_state[
@@ -376,81 +395,176 @@ def render_session_manager(
 
         return
 
-    session_options = {
-        session["id"]: session["title"]
+    options = {
+        session["id"]: (
+            session["title"]
+        )
         for session in sessions
     }
 
-    session_ids = list(
-        session_options.keys()
+    ids = list(
+        options.keys()
     )
 
-    current_session_id = st.session_state[
+    current_id = st.session_state[
         "selected_session_id"
     ]
 
-    if current_session_id not in session_ids:
-        current_session_id = session_ids[0]
+    if current_id not in ids:
+        current_id = ids[0]
 
-        st.session_state[
-            "selected_session_id"
-        ] = current_session_id
-
-    selected_index = session_ids.index(
-        current_session_id
-    )
-
-    selected_session_id = st.selectbox(
+    selected_id = st.selectbox(
         "Session active",
-        options=session_ids,
-        index=selected_index,
+        options=ids,
+        index=ids.index(
+            current_id
+        ),
         format_func=lambda session_id: (
             f"#{session_id} — "
-            f"{session_options[session_id]}"
+            f"{options[session_id]}"
         ),
     )
 
     st.session_state[
         "selected_session_id"
-    ] = selected_session_id
+    ] = selected_id
 
-    st.caption(
-        f"Session ID : {selected_session_id}"
+
+def render_dataset_manager(
+    token: str,
+    session_id: int,
+) -> None:
+    st.subheader(
+        "Données"
     )
 
+    try:
+        datasets = list_datasets(
+            token
+        )
 
-# ---------------------------------------------------------------------------
-# Agent chat
-# ---------------------------------------------------------------------------
+    except APIError as exc:
+        handle_auth_error(
+            exc
+        )
+
+        st.error(
+            "Impossible de charger "
+            f"les datasets : {exc}"
+        )
+
+        return
+
+    session_datasets = [
+        dataset
+        for dataset in datasets
+        if (
+            dataset.get(
+                "session_id"
+            )
+            == session_id
+        )
+    ]
+
+    if session_datasets:
+        for dataset in (
+            session_datasets
+        ):
+            st.caption(
+                f"📄 {dataset['filename']}"
+            )
+
+    else:
+        st.info(
+            "Aucun dataset associé "
+            "à cette session."
+        )
+
+    uploaded_file = (
+        st.file_uploader(
+            "Ajouter un CSV",
+            type=["csv"],
+            key=(
+                f"upload_{session_id}"
+            ),
+        )
+    )
+
+    description = (
+        st.text_input(
+            "Description",
+            key=(
+                "dataset_description_"
+                f"{session_id}"
+            ),
+        )
+    )
+
+    if st.button(
+        "Uploader le dataset",
+        key=(
+            "upload_button_"
+            f"{session_id}"
+        ),
+    ):
+        if uploaded_file is None:
+            st.warning(
+                "Sélectionnez d'abord "
+                "un fichier CSV."
+            )
+
+        else:
+            try:
+                dataset = upload_dataset(
+                    token=token,
+                    session_id=session_id,
+                    uploaded_file=(
+                        uploaded_file
+                    ),
+                    description=(
+                        description.strip()
+                    ),
+                )
+
+                st.success(
+                    f"{dataset['filename']} "
+                    "a été ajouté."
+                )
+
+                st.rerun()
+
+            except APIError as exc:
+                handle_auth_error(
+                    exc
+                )
+
+                st.error(
+                    "Upload impossible : "
+                    f"{exc}"
+                )
+
 
 def render_chat(
     token: str,
     session_id: int,
 ) -> None:
-    """
-    Affiche l'historique persistant
-    et permet d'interroger l'agent.
-    """
-
-    st.subheader("Analyse")
-
-    # ------------------------------------------------------------------
-    # History
-    # ------------------------------------------------------------------
+    st.subheader(
+        "Analyse"
+    )
 
     try:
         messages = get_messages(
-            token=token,
-            session_id=session_id,
+            token,
+            session_id,
         )
 
     except APIError as exc:
-        if exc.status_code == 401:
-            logout()
-            st.rerun()
+        handle_auth_error(
+            exc
+        )
 
         st.error(
-            f"Impossible de charger "
+            "Impossible de charger "
             f"l'historique : {exc}"
         )
 
@@ -458,13 +572,14 @@ def render_chat(
 
     if not messages:
         st.info(
-            "Aucun message dans cette session. "
-            "Posez votre première question "
-            "à l'agent."
+            "Aucun message. "
+            "Posez une question."
         )
 
     for message in messages:
-        role = message.get("role")
+        role = message.get(
+            "role"
+        )
 
         if role not in {
             "user",
@@ -472,42 +587,62 @@ def render_chat(
         }:
             continue
 
-        with st.chat_message(role):
+        with st.chat_message(
+            role
+        ):
             st.markdown(
-                message.get("content", "")
+                message.get(
+                    "content",
+                    "",
+                )
             )
 
-            try:
-                visualizations = (
-                    list_message_visualizations(
-                        token=token,
-                        message_id=message["id"],
+            if role == "assistant":
+                try:
+                    visualizations = (
+                        list_message_visualizations(
+                            token=token,
+                            message_id=(
+                                message["id"]
+                            ),
+                        )
                     )
-                )
 
-            except APIError as exc:
-                st.warning(
-                    "Impossible de charger "
-                    f"les visualisations : {exc}"
-                )
-                visualizations = []
+                except APIError as exc:
+                    handle_auth_error(
+                        exc
+                    )
 
-            for visualization in visualizations:
-                figure = go.Figure(
-                    visualization["figure_json"]
-                )
+                    st.warning(
+                        "Visualisations "
+                        "indisponibles."
+                    )
 
-                st.plotly_chart(
-                    figure,
-                    use_container_width=True,
-                )
+                    visualizations = []
 
-    # ------------------------------------------------------------------
-    # New message
-    # ------------------------------------------------------------------
+                for visualization in (
+                    visualizations
+                ):
+                    figure = go.Figure(
+                        visualization[
+                            "figure_json"
+                        ]
+                    )
+
+                    st.plotly_chart(
+                        figure,
+                        use_container_width=True,
+                        key=(
+                            f"session_{session_id}"
+                            f"_message_{message['id']}"
+                            "_visualization_"
+                            f"{visualization['id']}"
+                        ),
+                    )
 
     user_message = st.chat_input(
-        "Posez une question sur vos données..."
+        "Posez une question "
+        "sur vos données..."
     )
 
     if user_message:
@@ -520,7 +655,9 @@ def render_chat(
 
             st.session_state[
                 "pending_task_id"
-            ] = task["task_id"]
+            ] = task[
+                "task_id"
+            ]
 
             st.session_state[
                 "pending_task_session_id"
@@ -529,36 +666,34 @@ def render_chat(
             st.rerun()
 
         except APIError as exc:
-            if exc.status_code == 401:
-                logout()
-                st.rerun()
-
-            st.error(
-                f"Impossible d'envoyer "
-                f"le message : {exc}"
+            handle_auth_error(
+                exc
             )
 
-    # ------------------------------------------------------------------
-    # Celery task polling
-    # ------------------------------------------------------------------
+            st.error(
+                "Impossible d'envoyer "
+                f"le message : {exc}"
+            )
 
     task_id = st.session_state[
         "pending_task_id"
     ]
 
-    task_session_id = st.session_state[
-        "pending_task_session_id"
-    ]
+    task_session_id = (
+        st.session_state[
+            "pending_task_session_id"
+        ]
+    )
 
     if (
         task_id is not None
-        and task_session_id == session_id
+        and task_session_id
+        == session_id
     ):
         with st.status(
             "Analyse en cours...",
             expanded=True,
-        ) as task_status:
-
+        ) as status_box:
             for _ in range(60):
                 try:
                     result = (
@@ -570,11 +705,11 @@ def render_chat(
                     )
 
                 except APIError as exc:
-                    if exc.status_code == 401:
-                        logout()
-                        st.rerun()
+                    handle_auth_error(
+                        exc
+                    )
 
-                    task_status.update(
+                    status_box.update(
                         label=(
                             "Erreur pendant "
                             "l'analyse"
@@ -582,20 +717,20 @@ def render_chat(
                         state="error",
                     )
 
-                    st.error(str(exc))
                     return
 
-                current_status = result[
-                    "status"
-                ]
-
-                st.write(
-                    f"État : {current_status}"
+                current_status = (
+                    result["status"]
                 )
 
-                if current_status == "completed":
-                    task_status.update(
-                        label="Analyse terminée",
+                if (
+                    current_status
+                    == "completed"
+                ):
+                    status_box.update(
+                        label=(
+                            "Analyse terminée"
+                        ),
                         state="complete",
                     )
 
@@ -607,12 +742,20 @@ def render_chat(
                         "pending_task_session_id"
                     ] = None
 
-                    time.sleep(0.5)
+                    time.sleep(
+                        0.3
+                    )
+
                     st.rerun()
 
-                if current_status == "failed":
-                    task_status.update(
-                        label="L'analyse a échoué",
+                if (
+                    current_status
+                    == "failed"
+                ):
+                    status_box.update(
+                        label=(
+                            "Analyse échouée"
+                        ),
                         state="error",
                     )
 
@@ -626,31 +769,20 @@ def render_chat(
 
                     return
 
-                time.sleep(0.5)
+                time.sleep(
+                    0.5
+                )
 
-            task_status.update(
+            status_box.update(
                 label=(
-                    "L'analyse prend plus "
-                    "de temps que prévu"
+                    "Analyse toujours "
+                    "en cours"
                 ),
                 state="error",
             )
 
-            st.warning(
-                "La tâche continue peut-être "
-                "en arrière-plan. "
-                "Rechargez la page pour "
-                "consulter l'historique."
-            )
-
-
-# ---------------------------------------------------------------------------
-# Authenticated application
-# ---------------------------------------------------------------------------
 
 def render_authenticated_app() -> None:
-    """Affiche l'application utilisateur."""
-
     token = st.session_state[
         "access_token"
     ]
@@ -658,32 +790,25 @@ def render_authenticated_app() -> None:
     if token is None:
         st.stop()
 
-    # Le cookie ne suffit jamais à autoriser
-    # l'utilisateur : FastAPI vérifie le JWT.
-    user = load_authenticated_user(token)
-
-    if user is None:
-        st.error(
-            "Impossible de récupérer "
-            "l'utilisateur connecté."
-        )
-        st.stop()
+    user = load_authenticated_user(
+        token
+    )
 
     st.title(
         "📊 Agentic Data Analysis"
     )
 
-    header_col, logout_col = st.columns(
+    left, right = st.columns(
         [5, 1]
     )
 
-    with header_col:
+    with left:
         st.success(
-            f"Connecté en tant que "
+            "Connecté en tant que "
             f"{user['email']}"
         )
 
-    with logout_col:
+    with right:
         if st.button(
             "Se déconnecter",
             use_container_width=True,
@@ -693,32 +818,33 @@ def render_authenticated_app() -> None:
 
     st.divider()
 
-    # ------------------------------------------------------------------
-    # Sessions
-    # ------------------------------------------------------------------
+    render_session_manager(
+        token
+    )
 
-    render_session_manager(token)
-
-    selected_session_id = st.session_state[
+    session_id = st.session_state[
         "selected_session_id"
     ]
 
-    # ------------------------------------------------------------------
-    # Chat
-    # ------------------------------------------------------------------
+    if session_id is None:
+        return
 
-    if selected_session_id is not None:
-        st.divider()
+    st.divider()
 
-        render_chat(
-            token=token,
-            session_id=selected_session_id,
-        )
+    render_dataset_manager(
+        token=token,
+        session_id=session_id,
+    )
 
+    st.divider()
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+    # IMPORTANT :
+    # UN SEUL appel à render_chat.
+    render_chat(
+        token=token,
+        session_id=session_id,
+    )
+
 
 def main() -> None:
     initialize_state()

@@ -7,11 +7,11 @@ import requests
 API_BASE_URL = os.getenv(
     "API_BASE_URL",
     "http://127.0.0.1:8000",
-)
+).rstrip("/")
 
 
 class APIError(Exception):
-    """Erreur retournée par le backend FastAPI."""
+    """Erreur lors d'un appel au backend FastAPI."""
 
     def __init__(
         self,
@@ -22,7 +22,16 @@ class APIError(Exception):
         self.status_code = status_code
 
 
-def _handle_response(response: requests.Response) -> Any:
+def _handle_response(
+    response: requests.Response,
+) -> Any:
+    """
+    Transforme une réponse HTTP en donnée Python.
+
+    En cas d'erreur backend, lève APIError avec
+    le status HTTP lorsque celui-ci est disponible.
+    """
+
     try:
         payload = response.json()
     except ValueError:
@@ -33,6 +42,7 @@ def _handle_response(response: requests.Response) -> Any:
 
     if isinstance(payload, dict):
         detail = payload.get("detail")
+
         if detail:
             raise APIError(
                 str(detail),
@@ -40,23 +50,58 @@ def _handle_response(response: requests.Response) -> Any:
             )
 
     raise APIError(
-        f"API error {response.status_code}",
+        f"Backend returned HTTP {response.status_code}",
         status_code=response.status_code,
     )
 
 
-def _auth_headers(token: str) -> dict[str, str]:
+def _request(
+    method: str,
+    path: str,
+    **kwargs,
+) -> Any:
+    """
+    Point d'entrée HTTP commun à tous les appels frontend.
+
+    Permet notamment de convertir les erreurs réseau requests
+    en APIError exploitable proprement dans Streamlit.
+    """
+
+    try:
+        response = requests.request(
+            method=method,
+            url=f"{API_BASE_URL}{path}",
+            **kwargs,
+        )
+
+    except requests.RequestException as exc:
+        raise APIError(
+            "Backend API unavailable"
+        ) from exc
+
+    return _handle_response(response)
+
+
+def _auth_headers(
+    token: str,
+) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {token}",
     }
+
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
 
 
 def register(
     email: str,
     password: str,
 ) -> dict:
-    response = requests.post(
-        f"{API_BASE_URL}/auth/register",
+    return _request(
+        "POST",
+        "/auth/register",
         json={
             "email": email,
             "password": password,
@@ -64,15 +109,14 @@ def register(
         timeout=10,
     )
 
-    return _handle_response(response)
-
 
 def login(
     email: str,
     password: str,
 ) -> dict:
-    response = requests.post(
-        f"{API_BASE_URL}/auth/login",
+    return _request(
+        "POST",
+        "/auth/login",
         data={
             "username": email,
             "password": password,
@@ -80,39 +124,59 @@ def login(
         timeout=10,
     )
 
-    return _handle_response(response)
+
+def refresh_tokens(
+    refresh_token: str,
+) -> dict:
+    """
+    Échange un refresh token valide contre
+    un nouvel access token + refresh token.
+    """
+
+    return _request(
+        "POST",
+        "/auth/refresh",
+        json={
+            "refresh_token": refresh_token,
+        },
+        timeout=10,
+    )
 
 
 def get_current_user(
     token: str,
 ) -> dict:
-    response = requests.get(
-        f"{API_BASE_URL}/auth/me",
+    return _request(
+        "GET",
+        "/auth/me",
         headers=_auth_headers(token),
         timeout=10,
     )
 
-    return _handle_response(response)
+
+# ---------------------------------------------------------------------------
+# Sessions
+# ---------------------------------------------------------------------------
 
 
 def list_sessions(
     token: str,
 ) -> list[dict]:
-    response = requests.get(
-        f"{API_BASE_URL}/sessions",
+    return _request(
+        "GET",
+        "/sessions",
         headers=_auth_headers(token),
         timeout=10,
     )
-
-    return _handle_response(response)
 
 
 def create_session(
     token: str,
     title: str,
 ) -> dict:
-    response = requests.post(
-        f"{API_BASE_URL}/sessions",
+    return _request(
+        "POST",
+        "/sessions",
         headers=_auth_headers(token),
         json={
             "title": title,
@@ -120,15 +184,44 @@ def create_session(
         timeout=10,
     )
 
-    return _handle_response(response)
+
+# ---------------------------------------------------------------------------
+# Messages
+# ---------------------------------------------------------------------------
+
+
+def get_messages(
+    token: str,
+    session_id: int,
+) -> list[dict]:
+    return _request(
+        "GET",
+        f"/sessions/{session_id}/messages",
+        headers=_auth_headers(token),
+        timeout=10,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Agent / Celery
+# ---------------------------------------------------------------------------
+
 
 def send_agent_message(
     token: str,
     session_id: int,
     message: str,
 ) -> dict:
-    response = requests.post(
-        f"{API_BASE_URL}/sessions/{session_id}/agent",
+    """
+    Envoie une requête agentique.
+
+    FastAPI renvoie normalement 202 Accepted
+    avec un task_id Celery.
+    """
+
+    return _request(
+        "POST",
+        f"/sessions/{session_id}/agent",
         headers=_auth_headers(token),
         json={
             "message": message,
@@ -136,49 +229,82 @@ def send_agent_message(
         timeout=10,
     )
 
-    return _handle_response(response)
-
 
 def get_agent_task_status(
     token: str,
     session_id: int,
     task_id: str,
 ) -> dict:
-    response = requests.get(
+    return _request(
+        "GET",
         (
-            f"{API_BASE_URL}/sessions/"
-            f"{session_id}/agent/tasks/{task_id}"
+            f"/sessions/{session_id}"
+            f"/agent/tasks/{task_id}"
         ),
         headers=_auth_headers(token),
         timeout=10,
     )
 
-    return _handle_response(response)
 
+# ---------------------------------------------------------------------------
+# Visualizations
+# ---------------------------------------------------------------------------
 
-def get_messages(
-    token: str,
-    session_id: int,
-) -> list[dict]:
-    response = requests.get(
-        f"{API_BASE_URL}/sessions/{session_id}/messages",
-        headers=_auth_headers(token),
-        timeout=10,
-    )
-
-    return _handle_response(response)
 
 def list_message_visualizations(
     token: str,
     message_id: int,
 ) -> list[dict]:
-    response = requests.get(
-        (
-            f"{API_BASE_URL}/messages/"
-            f"{message_id}/visualizations"
-        ),
+    return _request(
+        "GET",
+        f"/messages/{message_id}/visualizations",
         headers=_auth_headers(token),
         timeout=10,
     )
 
-    return _handle_response(response)
+
+# ---------------------------------------------------------------------------
+# Datasets
+# ---------------------------------------------------------------------------
+
+
+def list_datasets(
+    token: str,
+) -> list[dict]:
+    return _request(
+        "GET",
+        "/datasets",
+        headers=_auth_headers(token),
+        timeout=10,
+    )
+
+
+def upload_dataset(
+    token: str,
+    session_id: int,
+    uploaded_file,
+    description: str = "",
+) -> dict:
+    """
+    Upload d'un CSV Streamlit vers FastAPI.
+
+    uploaded_file correspond à l'objet renvoyé
+    par st.file_uploader().
+    """
+
+    return _request(
+        "POST",
+        f"/sessions/{session_id}/datasets/upload",
+        headers=_auth_headers(token),
+        files={
+            "file": (
+                uploaded_file.name,
+                uploaded_file.getvalue(),
+                uploaded_file.type or "text/csv",
+            )
+        },
+        data={
+            "description": description,
+        },
+        timeout=30,
+    )
