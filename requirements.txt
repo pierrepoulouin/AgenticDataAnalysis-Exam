@@ -18,6 +18,9 @@ passlib
 bcrypt==4.0.1
 python-jose
 python-multipart
+pytest
+pytest-cov
+pytest-asyncio
 
 email-validator
 
