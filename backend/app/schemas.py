@@ -68,3 +68,14 @@ class AgentTurnRequest(BaseModel):
 class AgentTurnResponse(BaseModel):
     answer: str
     figures: list[dict]
+
+class AgentTaskResponse(BaseModel):
+    task_id: str
+    status: str
+
+
+class AgentTaskStatusResponse(BaseModel):
+    task_id: str
+    status: str
+    answer: str | None = None
+    figures: list[dict] = Field(default_factory=list)
