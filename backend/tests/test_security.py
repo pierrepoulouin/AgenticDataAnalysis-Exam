@@ -10,7 +10,6 @@ import asyncio
 # from backend.security.sandbox import execute_sandboxed_code
 
 
-@pytest.mark.asyncio
 @pytest.mark.security
 def test_code_execution_sandbox():
     """
@@ -31,24 +30,59 @@ def test_code_execution_sandbox():
         with pytest.raises(ValueError):
             execute_python(attempt)
 
-@pytest.mark.asyncio
 @pytest.mark.security
-async def test_resource_limits():
+def test_resource_limits():
     """
-    Test: Timeouts and resource limits enforced
-    
-    Steps:
-    1. Submit infinite loop code
-    2. Submit memory-intensive code
-    3. Verify timeouts and limits enforced
-    
-    Expected: Code terminates within limits
+    Infinite loops must be terminated by timeout
+    and excessive allocations by a memory limit.
     """
-    infinite_loop = "while True: pass"
-    memory_heavy = "x = [list(range(10000)) for _ in range(10000)]"
-    
-    # TODO: Test after sandbox implementation
-    pytest.skip("Backend not implemented yet - students will implement this")
+
+    import time
+
+    from backend.app.agent.executor import (
+        SandboxMemoryLimitError,
+        SandboxTimeoutError,
+        execute_python,
+    )
+
+    infinite_loop = (
+        "while True:\n"
+        "    pass"
+    )
+
+    started_at = time.monotonic()
+
+    with pytest.raises(
+        SandboxTimeoutError
+    ):
+        execute_python(
+            infinite_loop,
+            timeout_seconds=0.5,
+            memory_limit_mb=64,
+        )
+
+    elapsed = (
+        time.monotonic()
+        - started_at
+    )
+
+    # Le test prouve aussi que pytest
+    # n'est pas resté bloqué.
+    assert elapsed < 3
+
+    memory_heavy = (
+        "x = [list(range(10000)) "
+        "for _ in range(10000)]"
+    )
+
+    with pytest.raises(
+        SandboxMemoryLimitError
+    ):
+        execute_python(
+            memory_heavy,
+            timeout_seconds=5,
+            memory_limit_mb=64,
+        )
 
 
 @pytest.mark.asyncio
