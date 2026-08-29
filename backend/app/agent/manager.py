@@ -1,7 +1,9 @@
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
+import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,7 @@ from backend.app.agent.tools import (
 )
 from backend.app.models import (
     ChatSession,
+    Dataset,
     Message,
     Visualization,
 )
@@ -48,6 +51,56 @@ class AgentManager:
             raise ValueError("Session not found")
 
         return session
+
+    def load_dataframe_context(self) -> dict[str, Any]:
+        self.get_session()
+
+        datasets = self.db.scalars(
+            select(Dataset).where(
+                Dataset.user_id == self.user_id,
+                Dataset.session_id == self.session_id,
+            )
+        ).all()
+
+        loaded = {}
+
+        allowed_root = Path("uploads").resolve()
+
+        for dataset in datasets:
+            path = Path(dataset.storage_path).resolve()
+
+            try:
+                path.relative_to(allowed_root)
+            except ValueError:
+                raise ValueError(
+                    f"Dataset path outside allowed storage: {dataset.id}"
+                )
+
+            if path.suffix.lower() != ".csv":
+                raise ValueError(
+                    f"Unsupported dataset format: {path.suffix}"
+                )
+
+            if not path.exists():
+                raise FileNotFoundError(
+                    f"Dataset file not found: {dataset.storage_path}"
+                )
+
+            variable_name = f"dataset_{dataset.id}"
+
+            dataframe = pd.read_csv(path)
+
+            self.variables[variable_name] = dataframe
+
+            loaded[variable_name] = {
+                "dataset_id": dataset.id,
+                "filename": dataset.filename,
+                "description": dataset.description,
+                "rows": len(dataframe),
+                "columns": list(dataframe.columns),
+            }
+
+        return loaded
 
     def load_history(self) -> list[dict[str, Any]]:
         self.get_session()
