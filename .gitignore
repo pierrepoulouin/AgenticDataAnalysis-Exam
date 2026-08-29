@@ -16,3 +16,6 @@ htmlcov/
 uploads/
 
 .env
+
+# Deployment proof screenshots
+!docs/proof/*.png

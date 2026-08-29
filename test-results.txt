@@ -1,0 +1,75 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.1.1, pluggy-1.6.0 -- /usr/local/bin/python
+cachedir: .pytest_cache
+rootdir: /app
+configfile: pytest.ini
+plugins: cov-7.1.0, asyncio-1.4.0, anyio-4.14.2
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 21 items
+
+backend/tests/test_agent_integration.py::test_describe_dataset PASSED    [  4%]
+backend/tests/test_agent_integration.py::test_create_histogram PASSED    [  9%]
+backend/tests/test_agent_integration.py::test_calculate_mean PASSED      [ 14%]
+backend/tests/test_agent_integration.py::test_scatter_plot PASSED        [ 19%]
+backend/tests/test_agent_integration.py::test_session_persistence PASSED [ 23%]
+backend/tests/test_agent_integration.py::test_code_execution_sandbox PASSED [ 28%]
+backend/tests/test_api.py::test_health_check PASSED                      [ 33%]
+backend/tests/test_api.py::test_auth_register PASSED                     [ 38%]
+backend/tests/test_api.py::test_auth_login PASSED                        [ 42%]
+backend/tests/test_api.py::test_upload_dataset PASSED                    [ 47%]
+backend/tests/test_api.py::test_analysis_session PASSED                  [ 52%]
+backend/tests/test_api.py::test_unauthorized_access PASSED               [ 57%]
+backend/tests/test_persistence.py::test_session_recovery PASSED          [ 61%]
+backend/tests/test_persistence.py::test_user_data_isolation PASSED       [ 66%]
+backend/tests/test_persistence.py::test_visualization_storage PASSED     [ 71%]
+backend/tests/test_persistence.py::test_analysis_history PASSED          [ 76%]
+backend/tests/test_security.py::test_code_execution_sandbox PASSED       [ 80%]
+backend/tests/test_security.py::test_resource_limits PASSED              [ 85%]
+backend/tests/test_security.py::test_sql_injection PASSED                [ 90%]
+backend/tests/test_security.py::test_secret_management PASSED            [ 95%]
+backend/tests/test_security.py::test_tenant_isolation PASSED             [100%]
+
+=============================== warnings summary ===============================
+../usr/local/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /usr/local/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.14-final-0 _______________
+
+Name                                      Stmts   Miss  Cover
+-------------------------------------------------------------
+backend/app/__init__.py                       0      0   100%
+backend/app/agent/__init__.py                 0      0   100%
+backend/app/agent/executor.py                70      9    87%
+backend/app/agent/graph.py                   19      1    95%
+backend/app/agent/manager.py                 86      7    92%
+backend/app/agent/nodes.py                   22      2    91%
+backend/app/agent/planner.py                 87     73    16%
+backend/app/agent/sandbox_runner.py          45     45     0%
+backend/app/agent/state.py                   15      0   100%
+backend/app/agent/tools.py                   17      2    88%
+backend/app/celery_app.py                     5      0   100%
+backend/app/database.py                      13      4    69%
+backend/app/main.py                          55      4    93%
+backend/app/models.py                        50      0   100%
+backend/app/routers/__init__.py               0      0   100%
+backend/app/routers/agent.py                 37     21    43%
+backend/app/routers/auth.py                  43     15    65%
+backend/app/routers/datasets.py              77     23    70%
+backend/app/routers/sessions.py              42     13    69%
+backend/app/routers/visualizations.py        34     18    47%
+backend/app/schemas.py                       69      0   100%
+backend/app/security.py                      54      9    83%
+backend/app/tasks.py                         15      7    53%
+backend/tests/__init__.py                     0      0   100%
+backend/tests/conftest.py                    26      0   100%
+backend/tests/test_agent_integration.py     134      2    99%
+backend/tests/test_api.py                    98      0   100%
+backend/tests/test_persistence.py           114      0   100%
+backend/tests/test_security.py               73      0   100%
+-------------------------------------------------------------
+TOTAL                                      1300    255    80%
+Coverage HTML written to dir htmlcov
+======================== 21 passed, 1 warning in 34.37s ========================
