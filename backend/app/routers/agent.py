@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.app.agent.manager import AgentManager
-from backend.app.agent.planner import MockPlanner
+from backend.app.agent.planner import get_planner
 from backend.app.database import get_db
 from backend.app.models import User
 from backend.app.schemas import AgentTurnRequest, AgentTurnResponse
@@ -34,7 +34,7 @@ def run_agent(
     try:
         result = manager.run_agent_turn(
             user_query=payload.message,
-            planner=MockPlanner(),
+            planner=get_planner(),
         )
     except ValueError as exc:
         if str(exc) == "Session not found":
