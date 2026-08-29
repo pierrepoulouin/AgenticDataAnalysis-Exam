@@ -53,25 +53,83 @@ async def test_resource_limits():
 
 @pytest.mark.asyncio
 @pytest.mark.security
-async def test_sql_injection():
+async def test_sql_injection(client):
     """
-    Test: SQL injection attempts are blocked
-    
-    Steps:
-    1. Try SQL injection in dataset upload
-    2. Try injection in API parameters
-    3. Verify ORM escapes properly
-    
-    Expected: Queries fail/escaped
+    SQL-like payloads must be treated as plain data,
+    never as executable SQL.
     """
-    injection_attempts = [
-        "Robert'); DROP TABLE Users;--",
-        "'; SELECT password FROM Users WHERE username='admin';"
-    ]
-    
-    # TODO: Test after API implementation
-    pytest.skip("Backend not implemented yet - students will implement this")
 
+    email = "sql-test@example.com"
+    password = "MotDePasse123"
+
+    register_response = await client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": password,
+        },
+    )
+
+    assert register_response.status_code == 201
+
+    login_response = await client.post(
+        "/auth/login",
+        data={
+            "username": email,
+            "password": password,
+        },
+    )
+
+    assert login_response.status_code == 200
+
+    token = login_response.json()[
+        "access_token"
+    ]
+
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+
+    malicious_title = (
+        "Robert'); DROP TABLE users;--"
+    )
+
+    create_response = await client.post(
+        "/sessions",
+        headers=headers,
+        json={
+            "title": malicious_title,
+        },
+    )
+
+    assert create_response.status_code == 201
+
+    session = create_response.json()
+
+    # La chaîne est stockée telle quelle :
+    # elle n'a jamais été interprétée comme SQL.
+    assert session["title"] == malicious_title
+
+    # La table users existe toujours et
+    # l'authentification fonctionne toujours.
+    second_register = await client.post(
+        "/auth/register",
+        json={
+            "email": "still-alive@example.com",
+            "password": password,
+        },
+    )
+
+    assert second_register.status_code == 201
+
+    # Une tentative d'injection dans un paramètre
+    # typé int est refusée par FastAPI/Pydantic.
+    path_attack = await client.get(
+        "/sessions/1%20OR%201=1",
+        headers=headers,
+    )
+
+    assert path_attack.status_code == 422
 
 @pytest.mark.security
 def test_secret_management():
