@@ -9,4 +9,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.venv/
+.coverage
+htmlcov/
+.pytest_cache/
+uploads/
 
+.env
