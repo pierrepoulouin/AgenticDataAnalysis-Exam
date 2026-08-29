@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import Counter, Histogram, generate_latest
 
+from backend.app.routers.auth import router as auth_router
+from backend.app.routers.sessions import router as sessions_router
+
 
 logger = structlog.get_logger()
 
@@ -40,6 +43,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(auth_router)
+app.include_router(sessions_router)
 
 
 @app.middleware("http")
@@ -88,7 +95,11 @@ async def request_context_middleware(request: Request, call_next):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    request_id = getattr(request.state, "request_id", "unknown")
+    request_id = getattr(
+        request.state,
+        "request_id",
+        "unknown",
+    )
 
     logger.exception(
         "unhandled_exception",
