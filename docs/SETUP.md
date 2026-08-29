@@ -668,7 +668,7 @@ Current validated status:
 Current validated coverage:
 
 ```text
-83%
+80%
 ```
 
 The examination requires at least:
