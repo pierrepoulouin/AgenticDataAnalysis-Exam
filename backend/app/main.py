@@ -10,6 +10,7 @@ from prometheus_client import Counter, Histogram, generate_latest
 from backend.app.routers.auth import router as auth_router
 from backend.app.routers.sessions import router as sessions_router
 from backend.app.routers.datasets import router as datasets_router
+from backend.app.routers.agent import router as agent_router
 from backend.app.routers.visualizations import (
     router as visualizations_router,
 )
@@ -53,6 +54,7 @@ app.include_router(auth_router)
 app.include_router(sessions_router)
 app.include_router(datasets_router)
 app.include_router(visualizations_router)
+app.include_router(agent_router)
 
 
 @app.middleware("http")

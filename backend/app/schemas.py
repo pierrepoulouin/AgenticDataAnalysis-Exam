@@ -60,3 +60,11 @@ class VisualizationResponse(BaseModel):
     message_id: int
     figure_json: dict
     created_at: datetime
+
+class AgentTurnRequest(BaseModel):
+    message: str = Field(min_length=1)
+
+
+class AgentTurnResponse(BaseModel):
+    answer: str
+    figures: list[dict]
