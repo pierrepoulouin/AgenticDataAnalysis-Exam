@@ -50,3 +50,13 @@ class DatasetResponse(BaseModel):
     storage_path: str
     description: str | None
     created_at: datetime
+
+class VisualizationCreate(BaseModel):
+    figure_json: dict
+
+
+class VisualizationResponse(BaseModel):
+    id: int
+    message_id: int
+    figure_json: dict
+    created_at: datetime
