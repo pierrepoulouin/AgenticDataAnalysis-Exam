@@ -1,6 +1,7 @@
 import os
 
 from celery import Celery
+from kombu import Queue
 
 
 celery_app = Celery(
@@ -25,4 +26,25 @@ celery_app.conf.update(
     accept_content=["json"],
     task_track_started=True,
     broker_connection_retry_on_startup=True,
+
+    # Default queue for lightweight/system tasks.
+    task_default_queue="default",
+
+    # Explicit queues avoid sending long analyses
+    # to the same logical queue as system tasks.
+    task_queues=(
+        Queue("default"),
+        Queue("analysis"),
+    ),
+
+    task_routes={
+        "health.ping": {
+            "queue": "default",
+        },
+        "agent.run_turn": {
+            "queue": "analysis",
+        },
+    },
+
+    task_create_missing_queues=False,
 )
